@@ -12,6 +12,7 @@ from zarr.storage._memory import GpuMemoryStore, MemoryStore
 from zarr.storage._obstore import ObjectStore
 from zarr.storage._wrapper import WrapperStore
 from zarr.storage._zip import ZipStore
+from zarr.storage._tar import TarStore
 
 __all__ = [
     "FsspecStore",
@@ -24,6 +25,7 @@ __all__ = [
     "StorePath",
     "WrapperStore",
     "ZipStore",
+    "TarStore",
 ]
 
 
