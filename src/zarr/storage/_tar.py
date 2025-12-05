@@ -152,8 +152,9 @@ class TarStore(Store):
         if not self._is_open:
             self._sync_open()
         # docstring inherited
-        try:
-            with self._tf.open(key) as f:  # will raise KeyError
+        try: # MKM added 'mode' based on 'tafile' docs 
+            '''
+            with self._tf.open(key,mode="r:") as f:  # will raise KeyError
                 if byte_range is None:
                     return prototype.buffer.from_bytes(f.read())
                 elif isinstance(byte_range, RangeByteRequest):
@@ -167,6 +168,9 @@ class TarStore(Store):
                 else:
                     raise TypeError(f"Unexpected byte_range, got {byte_range}.")
                 return prototype.buffer.from_bytes(f.read())
+            '''
+            f = self._tf.getmember(key)
+            return prototype.buffer.from_bytes(f.read())
         except KeyError:
             return None
 
@@ -200,12 +204,16 @@ class TarStore(Store):
         # generally, this should be called inside a lock
         keyinfo = tarfile.TarInfo(name=key)
         #keyinfo.compress_type = self.compression
+        # MKM added 
+        '''
         if keyinfo.filename[-1] == os.sep:
             keyinfo.external_attr = 0o40775 << 16  # drwxrwxr-x
             keyinfo.external_attr |= 0x10  # MS-DOS directory flag
         else:
             keyinfo.external_attr = 0o644 << 16  # ?rw-r--r--
         self._tf.writestr(keyinfo, value.to_bytes())
+        '''
+        self._tf.addfile( tarinfo = keyinfo, fileobj = value.to_bytes() )
 
     async def set(self, key: str, value: Buffer) -> None:
         # docstring inherited
