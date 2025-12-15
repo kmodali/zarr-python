@@ -178,6 +178,9 @@ class ZipStore(Store):
     ) -> Buffer | None:
         # docstring inherited
         assert isinstance(key, str)
+        # MKM added because the array read fails without this, as the self._lock is not yet created        
+        if not self._is_open:
+            self._sync_open()        
 
         with self._lock:
             return self._get(key, prototype=prototype, byte_range=byte_range)

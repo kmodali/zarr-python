@@ -102,6 +102,26 @@ class TarStore(Store):
         )
 
         self._is_open = True
+    
+    def _sync_open_readonly(self) -> None:
+        if self._is_open:
+            raise ValueError("store is already open")
+
+        self._lock = threading.RLock()
+
+        self._tf = tarfile.TarFile(
+            self.path,
+            mode = "r",
+            #compression=self.compression,
+            #allowZip64=self.allowZip64,
+        )
+
+        self._is_open = True
+
+
+
+
+
 
     async def _open(self) -> None:
         self._sync_open()
@@ -149,28 +169,32 @@ class TarStore(Store):
         prototype: BufferPrototype,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
+        
+         # MKM added -- to avoid crash, when creating new group under 
+         #              tarfile ( which is opened in 'w' mode)
         if not self._is_open:
             self._sync_open()
         # docstring inherited
         try: # MKM added 'mode' based on 'tafile' docs 
-            '''
-            with self._tf.open(key,mode="r:") as f:  # will raise KeyError
-                if byte_range is None:
-                    return prototype.buffer.from_bytes(f.read())
-                elif isinstance(byte_range, RangeByteRequest):
-                    f.seek(byte_range.start)
-                    return prototype.buffer.from_bytes(f.read(byte_range.end - f.tell()))
-                size = f.seek(0, os.SEEK_END)
-                if isinstance(byte_range, OffsetByteRequest):
-                    f.seek(byte_range.offset)
-                elif isinstance(byte_range, SuffixByteRequest):
-                    f.seek(max(0, size - byte_range.suffix))
-                else:
-                    raise TypeError(f"Unexpected byte_range, got {byte_range}.")
-                return prototype.buffer.from_bytes(f.read())
-            '''
-            f = self._tf.getmember(key)
-            return prototype.buffer.from_bytes(f.read())
+            f = self._tf.getmember(key) # MKM for first time creation needed this, works with 'w' mode
+            if self._zmode == 'w': # MKM for adding a Group to an existing Store / Group
+                return None
+            else: # Reading from an existing Store / Group
+                with self._tf.extractfile(key) as fObj:  # MKM changed based on tarfile docs
+                    if byte_range is None:
+                        return prototype.buffer.from_bytes(fObj.read())
+                    elif isinstance(byte_range, RangeByteRequest):
+                        fObj.seek(byte_range.start)
+                        return prototype.buffer.from_bytes(fObj.read(byte_range.end - fObj.tell()))
+                    
+                    size = f.seek(0, os.SEEK_END)
+                    if isinstance(byte_range, OffsetByteRequest):
+                        fObj.seek(byte_range.offset)
+                    elif isinstance(byte_range, SuffixByteRequest):
+                        fObj.seek(max(0, size - byte_range.suffix))
+                    else:
+                        raise TypeError(f"Unexpected byte_range, got {byte_range}.")
+                    return prototype.buffer.from_bytes(fObj.read())                
         except KeyError:
             return None
 
@@ -199,21 +223,18 @@ class TarStore(Store):
         return out
 
     def _set(self, key: str, value: Buffer) -> None:
+        # MKM added
+        from io import BytesIO 
+        
         if not self._is_open:
             self._sync_open()
         # generally, this should be called inside a lock
         keyinfo = tarfile.TarInfo(name=key)
+        keyinfo.size = len(value.to_bytes())       
         #keyinfo.compress_type = self.compression
-        # MKM added 
-        '''
-        if keyinfo.filename[-1] == os.sep:
-            keyinfo.external_attr = 0o40775 << 16  # drwxrwxr-x
-            keyinfo.external_attr |= 0x10  # MS-DOS directory flag
-        else:
-            keyinfo.external_attr = 0o644 << 16  # ?rw-r--r--
-        self._tf.writestr(keyinfo, value.to_bytes())
-        '''
-        self._tf.addfile( tarinfo = keyinfo, fileobj = value.to_bytes() )
+
+        print(f"MKM: {key} {keyinfo} {value} {keyinfo.size}")
+        self._tf.addfile( tarinfo = keyinfo, fileobj = BytesIO( value.to_bytes() ) )        
 
     async def set(self, key: str, value: Buffer) -> None:
         # docstring inherited
@@ -231,7 +252,7 @@ class TarStore(Store):
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         self._check_writable()
         with self._lock:
-            members = self._tf.namelist()
+            members = self._tf.getnames()
             if key not in members:
                 self._set(key, value)
 
@@ -252,10 +273,14 @@ class TarStore(Store):
             raise NotImplementedError
 
     async def exists(self, key: str) -> bool:
+        # MKM added
+        if not self._is_open:
+            self._sync_open()
+
         # docstring inherited
         with self._lock:
             try:
-                self._tf.getinfo(key)
+                self._tf.getmember(key) # MKM changed based on tarfile docs
             except KeyError:
                 return False
             else:
@@ -263,9 +288,14 @@ class TarStore(Store):
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
+        # MKM added
+        if not self._is_open:
+            self._sync_open()
+        
         with self._lock:
-            for key in self._tf.namelist():
+            for key in self._tf.getnames():
                 yield key
+        
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
@@ -277,7 +307,7 @@ class TarStore(Store):
         # docstring inherited
         prefix = prefix.rstrip("/")
 
-        keys = self._tf.namelist()
+        keys = self._tf.getnames()
         seen = set()
         if prefix == "":
             keys_unique = {k.split("/")[0] for k in keys}
