@@ -16,17 +16,8 @@ import tracemalloc
 
 # Open the ZipStore in read-only mode
 store = zarr.storage.TarStore( "exampleEmpty.tar", read_only=True )
-#print( store )
-
-#print( f"Get zarr.json: {store['zarr.json']}" )
-
-#z = zarr.open_array(store, mode='r')
 
 z = zarr.open(store, mode='r')
-
-# read the data as a NumPy Array
-#print(z[:])
-#print(z.info)
 
 
 # Open the ZipStore in read-only mode
@@ -81,8 +72,7 @@ print( f"{ rawBytes }" )
 meta = json.loads(rawBytes.to_bytes().decode('utf-8'))
 pprint.pprint(meta)
 
-#print( f"Get zarr.json: {asyncio.run( store.get('zarr.json') ) }" )
-#print( f"Get zarr.json: {store['zarr.json']}" )
+# memory debug
 
 #snapshot = tracemalloc.take_snapshot()
 #top_stats = snapshot.statistics('lineno')
@@ -90,12 +80,3 @@ pprint.pprint(meta)
 #print("[ Top 10 ]")
 #for stat in top_stats[:10]:
 #    print(stat)
-
-
-#print(store.get("zarr.json", prototype=bytes))
-
-
-#z = zarr.open_array(store, mode='r')
-
-# read the data as a NumPy Array
-#print(store[])  # should print the array data stored in the tar file   

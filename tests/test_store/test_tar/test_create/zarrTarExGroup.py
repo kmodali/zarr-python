@@ -21,24 +21,5 @@ spam[:] = np.arange(10)
 # print the hierarchy
 print(root.tree())
 
-
-'''
-from zarr.core.group import Group
-#group = Group.from_store(zarr.storage.MemoryStore())
-group = Group.from_store(tarStore)
-group.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="float64")
-group.create_group(name="subgroup").create_array(name="subarray", shape=(10,), chunks=(10,), dtype="float64")
-group["subarray"]
-# <Array memory://... shape=(10,) dtype=float64>
-group["subgroup"]
-# <Group memory://...>
-group["subgroup"]["subarray"]
-# <Array memory://... shape=(10,) dtype=float64>
-
-print(group.tree())
-'''
-
-
-
 tarStore.close()
 

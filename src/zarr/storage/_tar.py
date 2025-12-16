@@ -140,9 +140,13 @@ class TarStore(Store):
 
     def close(self) -> None:
         # docstring inherited
-        super().close()
-        with self._lock:
-            self._tf.close()
+        if self._is_open:
+            super().close()
+            with self._lock:
+                self._tf.close()
+        else:
+            print("TarStore.close(): store is already closed")
+            pass
 
     async def clear(self) -> None:
         # docstring inherited
