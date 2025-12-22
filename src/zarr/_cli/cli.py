@@ -6,7 +6,6 @@ import typer
 
 import zarr
 import zarr.metadata.migrate_v3 as migrate_metadata
-from zarr.core.common import ZarrFormat
 from zarr.core.sync import sync
 from zarr.storage._common import make_store
 
@@ -24,12 +23,12 @@ def _set_logging_level(*, verbose: bool) -> None:
     zarr.set_format("%(message)s")
 
 
-class CLIZarrFormat(str, Enum):
+class ZarrFormat(str, Enum):
     v2 = "v2"
     v3 = "v3"
 
 
-class CLIZarrFormatV3(str, Enum):
+class ZarrFormatV3(str, Enum):
     """Limit CLI choice to only v3"""
 
     v3 = "v3"
@@ -38,7 +37,7 @@ class CLIZarrFormatV3(str, Enum):
 @app.command()  # type: ignore[misc]
 def migrate(
     zarr_format: Annotated[
-        CLIZarrFormatV3,
+        ZarrFormatV3,
         typer.Argument(
             help="Zarr format to migrate to. Currently only 'v3' is supported.",
         ),
@@ -123,7 +122,7 @@ def migrate(
 @app.command()  # type: ignore[misc]
 def remove_metadata(
     zarr_format: Annotated[
-        CLIZarrFormat,
+        ZarrFormat,
         typer.Argument(help="Which format's metadata to remove - v2 or v3."),
     ],
     store: Annotated[
@@ -161,7 +160,7 @@ def remove_metadata(
     sync(
         migrate_metadata.remove_metadata(
             store=input_zarr_store,
-            zarr_format=cast(ZarrFormat, int(zarr_format[1:])),
+            zarr_format=cast(Literal[2, 3], int(zarr_format[1:])),
             force=force,
             dry_run=dry_run,
         )
