@@ -159,7 +159,8 @@ class TarStore(Store):
             )
 
     def __str__(self) -> str:
-        return f"zip://{self.path}"
+        #return f"zip://{self.path}"
+        return f"file://{self.path}"
 
     def __repr__(self) -> str:
         return f"TarStore('{self}')"
@@ -180,16 +181,37 @@ class TarStore(Store):
             self._sync_open()
         # docstring inherited
         try: # MKM added 'mode' based on 'tafile' docs 
+            f = None
+            orignalMode = None
             f = self._tf.getmember(key) # MKM for first time creation needed this, works with 'w' mode
-            if self._zmode == 'w': # MKM for adding a Group to an existing Store / Group
+            #if self._zmode == 'w': # MKM for adding a Group to an existing Store / Group
+            if f is None:
                 return None
             else: # Reading from an existing Store / Group
+                if self._zmode == 'w':
+                    orignalMode = self._zmode
+                    self.close()
+                    self._sync_open_readonly()
+
                 with self._tf.extractfile(key) as fObj:  # MKM changed based on tarfile docs
                     if byte_range is None:
-                        return prototype.buffer.from_bytes(fObj.read())
+                        value = prototype.buffer.from_bytes(fObj.read())
+                        #return prototype.buffer.from_bytes(fObj.read())
+                        if self._zmode == 'w':
+                            self.close()
+                            self._sync_open()
+                            self._zmode = orignalMode
+                        return value
                     elif isinstance(byte_range, RangeByteRequest):
                         fObj.seek(byte_range.start)
-                        return prototype.buffer.from_bytes(fObj.read(byte_range.end - fObj.tell()))
+                        #return prototype.buffer.from_bytes(fObj.read(byte_range.end - fObj.tell()))
+                        value = prototype.buffer.from_bytes(fObj.read(byte_range.end - fObj.tell()))
+                        if self._zmode == 'w':
+                            self.close()
+                            self._sync_open()
+                            self._zmode = orignalMode
+                        return value
+                        
                     
                     size = f.seek(0, os.SEEK_END)
                     if isinstance(byte_range, OffsetByteRequest):
@@ -198,7 +220,14 @@ class TarStore(Store):
                         fObj.seek(max(0, size - byte_range.suffix))
                     else:
                         raise TypeError(f"Unexpected byte_range, got {byte_range}.")
-                    return prototype.buffer.from_bytes(fObj.read())                
+                                            #return prototype.buffer.from_bytes(fObj.read(byte_range.end - fObj.tell()))
+                    value = prototype.buffer.from_bytes(fObj.read())
+                    if self._zmode == 'w':
+                        self.close()
+                        self._sync_open()
+                        self._zmode = orignalMode
+                    return value
+                    #return prototype.buffer.from_bytes(fObj.read())                
         except KeyError:
             return None
 
