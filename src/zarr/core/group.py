@@ -558,6 +558,7 @@ class AsyncGroup:
                 maybe_consolidated_metadata_bytes = None
 
         elif zarr_format == 3:
+            #print(f"In AsyncGroup.open, {store_path / ZARR_JSON}", flush=True)
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             if zarr_json_bytes is None:
                 raise FileNotFoundError(store_path)

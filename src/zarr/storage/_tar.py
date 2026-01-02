@@ -8,6 +8,8 @@ import tarfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from google_crc32c import value
+
 from zarr.abc.store import (
     ByteRequest,
     OffsetByteRequest,
@@ -16,6 +18,12 @@ from zarr.abc.store import (
     SuffixByteRequest,
 )
 from zarr.core.buffer import Buffer, BufferPrototype
+
+from zarr.core.common import (
+    ZARR_JSON,
+    ZARRAY_JSON,
+    ZGROUP_JSON,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable
@@ -87,6 +95,7 @@ class TarStore(Store):
         self._zmode = mode
         #self.compression = compression
         #self.allowZip64 = allowZip64
+        self.metadataDict = {}        
 
     def _sync_open(self) -> None:
         if self._is_open:
@@ -238,49 +247,27 @@ class TarStore(Store):
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         
-         # MKM added -- to avoid crash, when creating new group under 
-         #              tarfile ( which is opened in 'w' mode)
+        # MKM added -- to avoid crash, when creating new group under 
+        #              tarfile ( which is opened in 'w' mode)
         if not self._is_open:
             self._sync_open()
         # docstring inherited
         try: # MKM added 'mode' based on 'tafile' docs 
-            f = None
-            orignalMode = None
             f = self._tf.getmember(key) # MKM for first time creation needed this, works with 'w' mode
             if self._zmode == 'w': # MKM for adding a Group to an existing Store / Group
-            #if f is None:
-                return None
+                #print(f"TarStore._get() 'w' mode  Key: {key}", flush=True)                
+                if any( k in key for k in [ ZARR_JSON, ZGROUP_JSON, ZARRAY_JSON ] ):
+                    #print(f"Key :{key} substringList {[ ZARR_JSON, ZGROUP_JSON, ZARRAY_JSON ]} found in key.", flush=True)
+                    # Fetch the metadata from the dictionary
+                    #print(f"TarStore._get() returning metadata: {self.metadataDict[key]} from dictionary for key: {key}", flush=True)
+                    return prototype.buffer.from_bytes( self.metadataDict[key].encode('utf-8') )
             else: # Reading from an existing Store / Group
-                '''
-                if self._zmode == 'w':
-                    orignalMode = self._zmode
-                    self.close()
-                    self._sync_open_readonly()
-                '''
-
                 with self._tf.extractfile(key) as fObj:  # MKM changed based on tarfile docs
                     if byte_range is None:
-                        value = prototype.buffer.from_bytes(fObj.read())
-                        #return prototype.buffer.from_bytes(fObj.read())
-                        '''
-                        if self._zmode == 'w':
-                            self.close()
-                            self._sync_open()
-                            self._zmode = orignalMode
-                        '''
-                        return value
+                        return prototype.buffer.from_bytes(fObj.read())
                     elif isinstance(byte_range, RangeByteRequest):
                         fObj.seek(byte_range.start)
-                        #return prototype.buffer.from_bytes(fObj.read(byte_range.end - fObj.tell()))
-                        value = prototype.buffer.from_bytes(fObj.read(byte_range.end - fObj.tell()))
-                        '''
-                        if self._zmode == 'w':
-                            self.close()
-                            self._sync_open()
-                            self._zmode = orignalMode
-                        '''
-                        return value
-                        
+                        return prototype.buffer.from_bytes(fObj.read(byte_range.end - fObj.tell()))
                     
                     size = f.seek(0, os.SEEK_END)
                     if isinstance(byte_range, OffsetByteRequest):
@@ -289,16 +276,7 @@ class TarStore(Store):
                         fObj.seek(max(0, size - byte_range.suffix))
                     else:
                         raise TypeError(f"Unexpected byte_range, got {byte_range}.")
-                                            #return prototype.buffer.from_bytes(fObj.read(byte_range.end - fObj.tell()))
-                    value = prototype.buffer.from_bytes(fObj.read())
-                    '''
-                    if self._zmode == 'w':
-                        self.close()
-                        self._sync_open()
-                        self._zmode = orignalMode
-                    '''
-                    return value
-                    #return prototype.buffer.from_bytes(fObj.read())                
+                    return prototype.buffer.from_bytes(fObj.read())                
         except KeyError:
             return None
 
@@ -327,7 +305,7 @@ class TarStore(Store):
         return out
 
     def _set(self, key: str, value: Buffer) -> None:
-        # MKM added
+        # MKM added for converting value to bytes
         from io import BytesIO 
         
         if not self._is_open:
@@ -337,7 +315,12 @@ class TarStore(Store):
         keyinfo.size = len(value.to_bytes())       
         #keyinfo.compress_type = self.compression
 
-        print(f"MKM: {key} {keyinfo} {value} {keyinfo.size}")
+        # MKM Check if the key is a metadata file
+        if any( k in key for k in [ ZARR_JSON, ZGROUP_JSON, ZARRAY_JSON ] ): 
+            #print(f"Key :{key} substringList {[ ZARR_JSON, ZGROUP_JSON, ZARRAY_JSON ]} found in key.", flush=True)
+            # Store the metadata in the dictionary
+            self.metadataDict[key] = value.to_bytes().decode('utf-8')
+            #print(f"TarStore._set() returning metadata: {self.metadataDict[key]} from dictionary for key: {key}", flush=True)
         self._tf.addfile( tarinfo = keyinfo, fileobj = BytesIO( value.to_bytes() ) )        
 
     async def set(self, key: str, value: Buffer) -> None:
