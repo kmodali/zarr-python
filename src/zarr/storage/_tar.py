@@ -95,7 +95,7 @@ class TarStore(Store):
         self._zmode = mode
         #self.compression = compression
         #self.allowZip64 = allowZip64
-        self.metadataDict = {}        
+        self.metadataDict = {} # MKM added for storing metadata files in 'w' mode       
 
     def _sync_open(self) -> None:
         if self._is_open:
@@ -110,27 +110,7 @@ class TarStore(Store):
             #allowZip64=self.allowZip64,
         )
 
-        self._is_open = True
-    
-    def _sync_open_readonly(self) -> None:
-        if self._is_open:
-            raise ValueError("store is already open")
-
-        self._lock = threading.RLock()
-
-        self._tf = tarfile.TarFile(
-            self.path,
-            mode = "r",
-            #compression=self.compression,
-            #allowZip64=self.allowZip64,
-        )
-
-        self._is_open = True
-
-
-
-
-
+        self._is_open = True 
 
     async def _open(self) -> None:
         self._sync_open()
@@ -176,69 +156,6 @@ class TarStore(Store):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and self.path == other.path
-
-    def _getNew(
-        self,
-        key: str,
-        prototype: BufferPrototype,
-        byte_range: ByteRequest | None = None,
-    ) -> Buffer | None:
-        
-         # MKM added -- to avoid crash, when creating new group under 
-         #              tarfile ( which is opened in 'w' mode)
-        if not self._is_open:
-            self._sync_open()
-        # docstring inherited
-        try: # MKM added 'mode' based on 'tafile' docs 
-            f = None
-            orignalMode = None
-            f = self._tf.getmember(key) # MKM for first time creation needed this, works with 'w' mode
-            #if self._zmode == 'w': # MKM for adding a Group to an existing Store / Group
-            if f is None:
-                return None
-            else: # Reading from an existing Store / Group
-                if self._zmode == 'w':
-                    orignalMode = self._zmode
-                    self.close()
-                    self._sync_open_readonly()
-
-                with self._tf.extractfile(key) as fObj:  # MKM changed based on tarfile docs
-                    if byte_range is None:
-                        value = prototype.buffer.from_bytes(fObj.read())
-                        #return prototype.buffer.from_bytes(fObj.read())
-                        if self._zmode == 'w':
-                            self.close()
-                            self._sync_open()
-                            self._zmode = orignalMode
-                        return value
-                    elif isinstance(byte_range, RangeByteRequest):
-                        fObj.seek(byte_range.start)
-                        #return prototype.buffer.from_bytes(fObj.read(byte_range.end - fObj.tell()))
-                        value = prototype.buffer.from_bytes(fObj.read(byte_range.end - fObj.tell()))
-                        if self._zmode == 'w':
-                            self.close()
-                            self._sync_open()
-                            self._zmode = orignalMode
-                        return value
-                        
-                    
-                    size = f.seek(0, os.SEEK_END)
-                    if isinstance(byte_range, OffsetByteRequest):
-                        fObj.seek(byte_range.offset)
-                    elif isinstance(byte_range, SuffixByteRequest):
-                        fObj.seek(max(0, size - byte_range.suffix))
-                    else:
-                        raise TypeError(f"Unexpected byte_range, got {byte_range}.")
-                                            #return prototype.buffer.from_bytes(fObj.read(byte_range.end - fObj.tell()))
-                    value = prototype.buffer.from_bytes(fObj.read())
-                    if self._zmode == 'w':
-                        self.close()
-                        self._sync_open()
-                        self._zmode = orignalMode
-                    return value
-                    #return prototype.buffer.from_bytes(fObj.read())                
-        except KeyError:
-            return None
 
     def _get(
         self,
